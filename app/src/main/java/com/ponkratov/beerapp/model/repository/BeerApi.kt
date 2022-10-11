@@ -1,4 +1,4 @@
-package com.ponkratov.beerapp.model
+package com.ponkratov.beerapp.model.repository
 
 import com.ponkratov.beerapp.model.entity.Beer
 import retrofit2.http.GET

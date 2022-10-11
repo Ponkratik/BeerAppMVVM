@@ -2,13 +2,18 @@ package com.ponkratov.beerapp.view.beerlist
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.ponkratov.beerapp.model.BeerApi
+import com.ponkratov.beerapp.domain.db.BeerDao
 import com.ponkratov.beerapp.model.entity.Beer
+import com.ponkratov.beerapp.model.repository.BeerApi
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 class BeerListViewModel(
-    private val dataSource: BeerApi
+    private val dataSource: BeerApi,
+    private val dbSource: BeerDao
 ) : ViewModel() {
 
     private var isLoading = false
@@ -20,14 +25,30 @@ class BeerListViewModel(
 
     private val queryFlow = MutableStateFlow("")
 
+    private val dbFlow = MutableStateFlow(emptyList<Beer>())
+
     val dataFlow: Flow<List<Beer>> =
-        queryFlow.combine(loadDataFlow()) { query, items ->
-            items.filter { it.name.contains(query, ignoreCase = true) }
-        }.shareIn(
-            viewModelScope,
-            SharingStarted.Eagerly,
-            replay = 1
-        )
+        queryFlow
+            .combine(loadDataFlow()) { query, items ->
+                items.filter { it.name.contains(query, ignoreCase = true) }
+            }.shareIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                replay = 1
+            )
+
+    val dataFlow1: Flow<List<Beer>> =
+        dbFlow
+            .onStart { emit(dbSource.getAll()) }
+            .map { queryFlow.value }
+            .combine(loadDataFlow()) { query, items ->
+                items.filter { it.name.contains(query, ignoreCase = true) }
+            }.flowOn(Dispatchers.IO)
+            .shareIn(
+                viewModelScope,
+                SharingStarted.Eagerly,
+                replay = 1
+            )
 
     var currentBeer: Beer? = null
 
@@ -47,10 +68,12 @@ class BeerListViewModel(
 
     private fun loadDataFlow(): Flow<List<Beer>> {
         return loadItemsFlow
-            .onStart { emit(LoadItemsType.REFRESH) }
+            .onStart {
+                emit(LoadItemsType.REFRESH)
+            }
             .onEach { isLoading = true }
-            .map { loadType ->
-                when(loadType) {
+            .onEach { loadType ->
+                when (loadType) {
                     LoadItemsType.REFRESH -> {
                         currentPage = 1
                     }
@@ -58,11 +81,21 @@ class BeerListViewModel(
                         currentPage++
                     }
                 }
+            }
+            .map {
                 dataSource.getBeers(currentPage, 25)
             }
-            .onEach { isLoading = false }
+            .onEach {
+                isLoading = false
+            }
             .runningReduce { accumulator, value ->
                 accumulator + value
+            }
+            .onEach {
+                viewModelScope.launch(Dispatchers.IO) {
+                    dbSource.deleteAll()
+                    dbSource.insertAll(it)
+                }
             }
     }
 

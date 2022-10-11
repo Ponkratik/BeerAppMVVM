@@ -6,8 +6,6 @@ import android.view.View
 import android.view.ViewGroup
 import androidx.appcompat.widget.SearchView
 import androidx.fragment.app.Fragment
-import androidx.fragment.app.activityViewModels
-import androidx.fragment.app.viewModels
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.flowWithLifecycle
 import androidx.lifecycle.lifecycleScope
@@ -18,7 +16,7 @@ import androidx.navigation.navGraphViewModels
 import androidx.recyclerview.widget.LinearLayoutManager
 import com.ponkratov.beerapp.R
 import com.ponkratov.beerapp.databinding.FragmentBeerListBinding
-import com.ponkratov.beerapp.model.ServiceLocator
+import com.ponkratov.beerapp.model.servicelocator.ServiceLocator
 import com.ponkratov.beerapp.view.extension.addPaginationListener
 import com.ponkratov.beerapp.view.extension.addVerticalSpace
 import kotlinx.coroutines.flow.launchIn
@@ -32,7 +30,10 @@ class BeerListFragment : Fragment() {
     private val viewModel: BeerListViewModel by navGraphViewModels(R.id.navigation) {
         viewModelFactory {
             initializer {
-                BeerListViewModel(ServiceLocator.provideBeerApi())
+                BeerListViewModel(
+                    ServiceLocator.provideBeerApi(),
+                    ServiceLocator.provideBeerDao()
+                )
             }
         }
     }
@@ -84,7 +85,7 @@ class BeerListFragment : Fragment() {
             }
 
             viewModel
-                .dataFlow
+                .dataFlow1
                 .flowWithLifecycle(viewLifecycleOwner.lifecycle, Lifecycle.State.STARTED)
                 .onEach { layoutSwiperefresh.isRefreshing = false }
                 .onEach(adapter::submitList)
